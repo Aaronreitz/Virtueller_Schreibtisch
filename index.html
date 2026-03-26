@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Virtueller Schreibtisch</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body data-theme="lollypop">
+
+<!-- ── Globale Navigation ────────────────────────────────────────────────────── -->
+<div id="global-bar">
+  <div class="gb-logo">🗂 Virtueller Schreibtisch</div>
+
+  <nav class="gb-tabs">
+    <button class="gb-tab active" data-tab="schreibtisch">🗂 Schreibtisch</button>
+    <button class="gb-tab" data-tab="haushaltsbuch">💳 Haushaltsbuch</button>
+  </nav>
+
+  <div class="gb-right">
+    <button id="theme-toggle" class="theme-btn">
+      <span id="theme-icon">🍭</span>
+      <span id="theme-name">Lollypop</span>
+    </button>
+  </div>
+</div>
+
+<!-- ── App ──────────────────────────────────────────────────────────────────── -->
+<div id="app">
+
+  <!-- ════════════════════════════════════════════════════════════════════════
+       Tab 1: Schreibtisch
+       ════════════════════════════════════════════════════════════════════ -->
+  <div id="tab-schreibtisch" class="tab-pane active">
+
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <div class="sidebar-section-label">Kategorien</div>
+      <nav class="sidebar-nav" id="sidebar-nav"></nav>
+      <div class="sidebar-footer" id="sidebar-footer">Bereit</div>
+    </aside>
+
+    <!-- Hauptbereich -->
+    <div id="main">
+      <header id="header">
+        <div class="header-breadcrumb">
+          <div class="breadcrumb-category" id="breadcrumb">
+            <span id="bc-icon" class="breadcrumb-icon"></span>
+            <span id="bc-label">Kategorie wählen</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <div class="search-wrap">
+            <input type="text" id="search-input" placeholder="Suchen…" />
+          </div>
+          <button class="btn btn-secondary" id="btn-link-folder">📁 Ordner verknüpfen</button>
+          <button class="btn btn-primary"   id="btn-add-doc">＋ Dokument</button>
+        </div>
+      </header>
+
+      <div id="content">
+        <!-- Ordner-Bar -->
+        <div class="folder-bar" id="folder-bar">
+          <span class="folder-bar-icon">📂</span>
+          <div class="folder-bar-info">
+            <div class="folder-bar-label">Verknüpfter Ordner</div>
+            <div class="folder-bar-path not-linked" id="folder-path-display">
+              Kein Ordner verknüpft – Klicke auf "Ordner verknüpfen"
+            </div>
+          </div>
+          <button class="btn btn-ghost" id="btn-open-folder"   style="display:none">↗ Öffnen</button>
+          <button class="btn btn-ghost" id="btn-unlink-folder" style="display:none">✕ Entfernen</button>
+          <button class="btn btn-ghost" id="btn-refresh-folder">↺ Aktualisieren</button>
+        </div>
+
+        <!-- Unterkategorie-Tabs -->
+        <div class="subcat-bar" id="subcat-bar"></div>
+
+        <!-- Dateiliste -->
+        <div>
+          <div class="section-header">
+            <span class="section-title" id="section-title">Dokumente</span>
+            <span class="section-count"  id="section-count"></span>
+          </div>
+          <div class="file-grid" id="file-grid"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════════
+       Tab 2: Haushaltsbuch
+       ════════════════════════════════════════════════════════════════════ -->
+  <div id="tab-haushaltsbuch" class="tab-pane">
+    <div class="hb-layout">
+
+      <!-- Toolbar -->
+      <div class="hb-toolbar">
+        <div class="hb-filters" id="hb-filters">
+          <button class="hb-filter active" data-filter="alle">Alle</button>
+          <button class="hb-filter" data-filter="einnahmen">💚 Einnahmen</button>
+          <button class="hb-filter" data-filter="ausgaben">❤ Ausgaben</button>
+          <button class="hb-filter" data-filter="bezahlt">✓ Bezahlt</button>
+          <button class="hb-filter" data-filter="ausstehend">⏳ Ausstehend</button>
+        </div>
+
+        <div class="hb-month-nav">
+          <button id="hb-prev-month" class="hb-month-btn">‹</button>
+          <span   id="hb-month-label" class="hb-month-label">Alle Monate</span>
+          <button id="hb-next-month" class="hb-month-btn">›</button>
+          <button id="hb-all-months" class="hb-month-all active">Alle</button>
+        </div>
+
+        <button class="btn btn-primary" id="btn-add-hb-entry">＋ Hinzufügen</button>
+      </div>
+
+      <!-- Karten -->
+      <div class="hb-cards-area">
+        <div class="hb-card-grid" id="hb-card-grid"></div>
+      </div>
+
+      <!-- Zusammenfassung (fixiert unten) -->
+      <div class="hb-summary">
+        <div class="hb-sum-block">
+          <span class="hb-sum-label">Gesamt (Saldo)</span>
+          <span class="hb-sum-value" id="hb-sum-total">0,00 €</span>
+        </div>
+        <div class="hb-sum-sep"></div>
+        <div class="hb-sum-block">
+          <span class="hb-sum-label">✓ Bezahlt</span>
+          <span class="hb-sum-value paid" id="hb-sum-paid">0,00 €</span>
+        </div>
+        <div class="hb-sum-sep"></div>
+        <div class="hb-sum-block">
+          <span class="hb-sum-label">⏳ Ausstehend</span>
+          <span class="hb-sum-value pending" id="hb-sum-pending">0,00 €</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div><!-- #app -->
+
+<!-- ════════════════════════════════════════════════════════════════════════════
+     Modals
+     ════════════════════════════════════════════════════════════════════════ -->
+
+<!-- Modal: Dokument hinzufügen -->
+<div class="modal-overlay" id="modal-add">
+  <div class="modal">
+    <div class="modal-header">
+      <span>📄</span>
+      <span class="modal-title">Dokument hinzufügen</span>
+      <button class="modal-close" data-close="modal-add">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="add-file-preview" class="file-preview-list"></div>
+      <div class="form-group">
+        <label class="form-label">Dateien auswählen</label>
+        <button class="btn btn-secondary" id="btn-pick-files" style="width:100%">📎 Dateien auswählen…</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="add-title">Bezeichnung (optional)</label>
+        <input type="text" id="add-title" class="form-control" placeholder="z.B. Stromrechnung März 2024" />
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="add-subcat">Unterkategorie</label>
+        <select id="add-subcat" class="form-control"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="add-date">Datum des Dokuments</label>
+        <input type="date" id="add-date" class="form-control" />
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="add-note">Notiz (optional)</label>
+        <textarea id="add-note" class="form-control" rows="3" placeholder="Kurze Notiz…"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close="modal-add">Abbrechen</button>
+      <button class="btn btn-primary"   id="btn-save-doc">💾 Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Dokument Details -->
+<div class="modal-overlay" id="modal-detail">
+  <div class="modal">
+    <div class="modal-header">
+      <span>📋</span>
+      <span class="modal-title">Dokument-Details</span>
+      <button class="modal-close" data-close="modal-detail">✕</button>
+    </div>
+    <div class="modal-body" id="modal-detail-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-danger"    id="btn-delete-doc">🗑 Löschen</button>
+      <button class="btn btn-secondary" id="btn-show-in-folder">📂 Im Explorer</button>
+      <button class="btn btn-primary"   id="btn-open-doc">▶ Öffnen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Haushaltsbuch-Eintrag hinzufügen / bearbeiten -->
+<div class="modal-overlay" id="modal-hb-entry">
+  <div class="modal">
+    <div class="modal-header">
+      <span id="modal-hb-icon">💳</span>
+      <span class="modal-title" id="modal-hb-title">Eintrag hinzufügen</span>
+      <button class="modal-close" data-close="modal-hb-entry">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label" for="hb-name">Bezeichnung *</label>
+        <input type="text" id="hb-name" class="form-control" placeholder="z.B. Monatsmiete" />
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="hb-desc">Beschreibung</label>
+        <input type="text" id="hb-desc" class="form-control" placeholder="Optional" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="hb-amount">Betrag (€) *</label>
+          <input type="number" id="hb-amount" class="form-control"
+                 placeholder="0.00" min="0" step="0.01" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="hb-date">Datum *</label>
+          <input type="date" id="hb-date" class="form-control" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Typ</label>
+        <div class="hb-type-selector" id="hb-type-selector">
+          <button class="hb-type-btn active" data-type="ausgabe">❤ Ausgabe</button>
+          <button class="hb-type-btn"        data-type="einnahme">💚 Einnahme</button>
+        </div>
+      </div>
+      <div class="form-group" id="hb-recurrence-group">
+        <label class="form-label">Wiederholung</label>
+        <div class="hb-recurrence-selector" id="hb-recurrence-selector">
+          <button class="hb-rec-btn active" data-rec="einmalig">Einmalig</button>
+          <button class="hb-rec-btn" data-rec="monatlich">↻ Monatlich</button>
+          <button class="hb-rec-btn" data-rec="quartal">↻ Quartal</button>
+          <button class="hb-rec-btn" data-rec="jaehrlich">↻ Jährlich</button>
+        </div>
+        <!-- Vorschau (nur beim Neuanlegen) -->
+        <div id="hb-series-preview" class="hb-series-preview" style="display:none"></div>
+        <!-- Hinweis beim Bearbeiten -->
+        <div id="hb-edit-note" class="hb-edit-note" style="display:none">
+          ✎ Ändert nur diesen Eintrag – andere Monate bleiben unberührt.
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close="modal-hb-entry">Abbrechen</button>
+      <button class="btn btn-primary"   id="btn-save-hb-entry">💾 Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast-container"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
