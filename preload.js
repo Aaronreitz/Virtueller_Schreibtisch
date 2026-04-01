@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Dialoge
   openFolderDialog: () => ipcRenderer.invoke('dialog:openFolder'),
   openFilesDialog: () => ipcRenderer.invoke('dialog:openFiles'),
+  saveFile: (defaultName, content) => ipcRenderer.invoke('dialog:saveFile', defaultName, content),
 
   // Dateisystem
   readDir: (dirPath) => ipcRenderer.invoke('fs:readDir', dirPath),
@@ -15,9 +16,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   fileExists: (filePath) => ipcRenderer.invoke('fs:fileExists', filePath),
   deleteFile: (filePath) => ipcRenderer.invoke('fs:deleteFile', filePath),
   rename: (oldPath, newPath) => ipcRenderer.invoke('fs:rename', oldPath, newPath),
+  readFileAsBase64: (filePath) => ipcRenderer.invoke('fs:readFileAsBase64', filePath),
 
   // Metadaten
   loadMetadata: () => ipcRenderer.invoke('data:load'),
   saveMetadata: (data) => ipcRenderer.invoke('data:save', data),
   getDataPath: () => ipcRenderer.invoke('app:getDataPath'),
+
+  // Backups
+  listBackups: () => ipcRenderer.invoke('data:listBackups'),
+  restoreBackup: (fileName) => ipcRenderer.invoke('data:restoreBackup', fileName),
 });

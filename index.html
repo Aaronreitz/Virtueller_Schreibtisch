@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';" />
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src blob:;" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Virtueller Schreibtisch</title>
   <link rel="stylesheet" href="style.css" />
@@ -20,6 +20,7 @@
   </nav>
 
   <div class="gb-right">
+    <button id="btn-settings" class="theme-btn" title="Einstellungen">⚙️</button>
     <button id="theme-toggle" class="theme-btn">
       <span id="theme-icon">🍭</span>
       <span id="theme-name">Lollypop</span>
@@ -61,6 +62,9 @@
       </header>
 
       <div id="content">
+        <!-- Ablaufende Verträge (Dashboard-Warnung) -->
+        <div id="contract-warnings" style="display:none"></div>
+
         <!-- Ordner-Bar -->
         <div class="folder-bar" id="folder-bar">
           <span class="folder-bar-icon">📂</span>
@@ -81,7 +85,7 @@
         <!-- Dateiliste -->
         <div>
           <div class="section-header">
-            <span class="section-title" id="section-title">Dokumente</span>
+            <span class="section-title label-caps" id="section-title">Dokumente</span>
             <span class="section-count"  id="section-count"></span>
           </div>
           <div class="file-grid" id="file-grid"></div>
@@ -113,7 +117,23 @@
           <button id="hb-all-months" class="hb-month-all active">Alle</button>
         </div>
 
+        <button class="btn btn-secondary" id="btn-export-hb" title="Als CSV exportieren">📥 Export</button>
+        <button class="btn btn-secondary" id="btn-toggle-hb-stats" title="Statistiken anzeigen">📊 Statistik</button>
         <button class="btn btn-primary" id="btn-add-hb-entry">＋ Hinzufügen</button>
+      </div>
+
+      <!-- Statistik-Bereich (einklappbar) -->
+      <div class="hb-stats-section" id="hb-stats-section" style="display:none">
+        <div class="hb-stats-grid">
+          <div class="hb-chart-card">
+            <div class="hb-chart-title label-caps">Einnahmen vs. Ausgaben – letzte 6 Monate</div>
+            <canvas id="hb-bar-chart" width="560" height="330"></canvas>
+          </div>
+          <div class="hb-chart-card">
+            <div class="hb-chart-title label-caps">Aufteilung (gesamt)</div>
+            <canvas id="hb-pie-chart" width="260" height="290"></canvas>
+          </div>
+        </div>
       </div>
 
       <!-- Karten -->
@@ -124,17 +144,17 @@
       <!-- Zusammenfassung (fixiert unten) -->
       <div class="hb-summary">
         <div class="hb-sum-block">
-          <span class="hb-sum-label">Gesamt (Saldo)</span>
+          <span class="hb-sum-label label-caps">Gesamt (Saldo)</span>
           <span class="hb-sum-value" id="hb-sum-total">0,00 €</span>
         </div>
         <div class="hb-sum-sep"></div>
         <div class="hb-sum-block">
-          <span class="hb-sum-label">✓ Bezahlt</span>
+          <span class="hb-sum-label label-caps">✓ Bezahlt</span>
           <span class="hb-sum-value paid" id="hb-sum-paid">0,00 €</span>
         </div>
         <div class="hb-sum-sep"></div>
         <div class="hb-sum-block">
-          <span class="hb-sum-label">⏳ Ausstehend</span>
+          <span class="hb-sum-label label-caps">⏳ Ausstehend</span>
           <span class="hb-sum-value pending" id="hb-sum-pending">0,00 €</span>
         </div>
       </div>
@@ -159,24 +179,42 @@
     <div class="modal-body">
       <div id="add-file-preview" class="file-preview-list"></div>
       <div class="form-group">
-        <label class="form-label">Dateien auswählen</label>
+        <label class="form-label label-caps">Dateien auswählen</label>
         <button class="btn btn-secondary" id="btn-pick-files" style="width:100%">📎 Dateien auswählen…</button>
       </div>
       <div class="form-group">
-        <label class="form-label" for="add-title">Bezeichnung (optional)</label>
+        <label class="form-label label-caps" for="add-title">Bezeichnung (optional)</label>
         <input type="text" id="add-title" class="form-control" placeholder="z.B. Stromrechnung März 2024" />
       </div>
       <div class="form-group">
-        <label class="form-label" for="add-subcat">Unterkategorie</label>
+        <label class="form-label label-caps" for="add-subcat">Unterkategorie</label>
         <select id="add-subcat" class="form-control"></select>
       </div>
       <div class="form-group">
-        <label class="form-label" for="add-date">Datum des Dokuments</label>
+        <label class="form-label label-caps" for="add-date">Datum des Dokuments</label>
         <input type="date" id="add-date" class="form-control" />
       </div>
       <div class="form-group">
-        <label class="form-label" for="add-note">Notiz (optional)</label>
+        <label class="form-label label-caps" for="add-note">Notiz (optional)</label>
         <textarea id="add-note" class="form-control" rows="3" placeholder="Kurze Notiz…"></textarea>
+      </div>
+      <!-- Vertragsfelder (nur für Kategorie "vertraege") -->
+      <div class="contract-fields" id="contract-fields" style="display:none">
+        <div class="contract-fields-title label-caps">📋 Vertragsdetails</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label label-caps" for="add-contract-start">Vertragsbeginn</label>
+            <input type="date" id="add-contract-start" class="form-control" />
+          </div>
+          <div class="form-group">
+            <label class="form-label label-caps" for="add-contract-duration">Laufzeit (Monate)</label>
+            <input type="number" id="add-contract-duration" class="form-control" placeholder="12" min="1" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label label-caps" for="add-contract-notice">Kündigungsfrist (Wochen)</label>
+          <input type="number" id="add-contract-notice" class="form-control" placeholder="4" min="0" />
+        </div>
       </div>
     </div>
     <div class="modal-footer">
@@ -188,16 +226,20 @@
 
 <!-- Modal: Dokument Details -->
 <div class="modal-overlay" id="modal-detail">
-  <div class="modal">
+  <div class="modal modal-detail-wide">
     <div class="modal-header">
       <span>📋</span>
       <span class="modal-title">Dokument-Details</span>
       <button class="modal-close" data-close="modal-detail">✕</button>
     </div>
     <div class="modal-body" id="modal-detail-body"></div>
+    <div class="modal-preview-section" id="modal-preview-section" style="display:none">
+      <div id="modal-preview-content" class="modal-preview-content"></div>
+    </div>
     <div class="modal-footer">
       <button class="btn btn-danger"    id="btn-delete-doc">🗑 Löschen</button>
       <button class="btn btn-secondary" id="btn-show-in-folder">📂 Im Explorer</button>
+      <button class="btn btn-ghost"     id="btn-toggle-preview">👁 Vorschau</button>
       <button class="btn btn-primary"   id="btn-open-doc">▶ Öffnen</button>
     </div>
   </div>
@@ -213,33 +255,33 @@
     </div>
     <div class="modal-body">
       <div class="form-group">
-        <label class="form-label" for="hb-name">Bezeichnung *</label>
+        <label class="form-label label-caps" for="hb-name">Bezeichnung *</label>
         <input type="text" id="hb-name" class="form-control" placeholder="z.B. Monatsmiete" />
       </div>
       <div class="form-group">
-        <label class="form-label" for="hb-desc">Beschreibung</label>
+        <label class="form-label label-caps" for="hb-desc">Beschreibung</label>
         <input type="text" id="hb-desc" class="form-control" placeholder="Optional" />
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label" for="hb-amount">Betrag (€) *</label>
+          <label class="form-label label-caps" for="hb-amount">Betrag (€) *</label>
           <input type="number" id="hb-amount" class="form-control"
                  placeholder="0.00" min="0" step="0.01" />
         </div>
         <div class="form-group">
-          <label class="form-label" for="hb-date">Datum *</label>
+          <label class="form-label label-caps" for="hb-date">Datum *</label>
           <input type="date" id="hb-date" class="form-control" />
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Typ</label>
+        <label class="form-label label-caps">Typ</label>
         <div class="hb-type-selector" id="hb-type-selector">
           <button class="hb-type-btn active" data-type="ausgabe">❤ Ausgabe</button>
           <button class="hb-type-btn"        data-type="einnahme">💚 Einnahme</button>
         </div>
       </div>
       <div class="form-group" id="hb-recurrence-group">
-        <label class="form-label">Wiederholung</label>
+        <label class="form-label label-caps">Wiederholung</label>
         <div class="hb-recurrence-selector" id="hb-recurrence-selector">
           <button class="hb-rec-btn active" data-rec="einmalig">Einmalig</button>
           <button class="hb-rec-btn" data-rec="monatlich">↻ Monatlich</button>
@@ -257,6 +299,40 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" data-close="modal-hb-entry">Abbrechen</button>
       <button class="btn btn-primary"   id="btn-save-hb-entry">💾 Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Einstellungen -->
+<div class="modal-overlay" id="modal-settings">
+  <div class="modal">
+    <div class="modal-header">
+      <span>⚙️</span>
+      <span class="modal-title">Einstellungen</span>
+      <button class="modal-close" data-close="modal-settings">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Benachrichtigungen -->
+      <div class="settings-section">
+        <div class="settings-section-title">🔔 Benachrichtigungen</div>
+        <label class="settings-toggle-row">
+          <span class="settings-toggle-label">Fälligkeits-Erinnerungen aktivieren</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="settings-notifications" />
+            <span class="toggle-slider"></span>
+          </label>
+        </label>
+        <div class="settings-hint">Benachrichtigt bei ausstehenden Einträgen, die in ≤ 3 Tagen fällig sind.</div>
+      </div>
+      <!-- Backups -->
+      <div class="settings-section">
+        <div class="settings-section-title">💾 Backups</div>
+        <div class="settings-hint">Wird automatisch bei jedem Speichern angelegt (max. 7).</div>
+        <div id="backup-list" class="backup-list"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close="modal-settings">Schließen</button>
     </div>
   </div>
 </div>

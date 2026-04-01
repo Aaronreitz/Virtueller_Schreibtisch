@@ -28,6 +28,7 @@ let state = {
     selectedRecurrence: 'einmalig',
     expandedStacks: new Set(),
     lastMonth: null,
+    statsVisible: false,
   },
   // Gemeinsam (persistiert)
   metadata: {
@@ -35,6 +36,7 @@ let state = {
     linkedFolders: {},
     documents: {},
     haushaltsbuch: { entries: {} },
+    settings: { notifications: true },
   },
 };
 
@@ -164,10 +166,17 @@ function renderSidebar() {
     const count = countForCategory(cat.id);
     const item = document.createElement('div');
     item.className = 'category-item' + (cat.id === state.currentCategoryId ? ' active' : '');
+    const expiryStatus = getContractExpiryStatus(cat.id);
+    const expiryBadge = expiryStatus === 'red'
+      ? `<span class="cat-expiry-badge red" title="Vertrag läuft in &lt;60 Tagen ab">!</span>`
+      : expiryStatus === 'yellow'
+      ? `<span class="cat-expiry-badge yellow" title="Vertrag läuft in &lt;90 Tagen ab">!</span>`
+      : '';
     item.innerHTML = `
       <span class="cat-icon">${cat.icon}</span>
       <span class="cat-label">${cat.label}</span>
       ${count > 0 ? `<span class="cat-count">${count}</span>` : ''}
+      ${expiryBadge}
     `;
     item.addEventListener('click', () => selectCategory(cat.id));
     nav.appendChild(item);
@@ -325,6 +334,7 @@ function renderAll() {
   renderFolderBar();
   renderSubcatBar();
   renderFileGrid();
+  renderContractWarnings();
 }
 
 // ── Schreibtisch: Aktionen ────────────────────────────────────────────────────
@@ -389,6 +399,16 @@ function openAddModal() {
     if (sub === state.currentSubcategory) opt.selected = true;
     select.appendChild(opt);
   }
+  // Vertragsfelder nur für "vertraege" anzeigen
+  const contractFieldsEl = document.getElementById('contract-fields');
+  if (state.currentCategoryId === 'vertraege') {
+    contractFieldsEl.style.display = 'block';
+    document.getElementById('add-contract-start').value    = new Date().toISOString().slice(0, 10);
+    document.getElementById('add-contract-duration').value = '';
+    document.getElementById('add-contract-notice').value   = '';
+  } else {
+    contractFieldsEl.style.display = 'none';
+  }
   openModal('modal-add');
 }
 
@@ -433,8 +453,24 @@ async function saveDocuments() {
       catch (e) { showToast('Fehler: ' + e.message, 'error'); continue; }
     }
     const id = uuid();
+    // Vertragsfelder speichern
+    let contractData = {};
+    if (catId === 'vertraege') {
+      const cStart    = document.getElementById('add-contract-start').value;
+      const cDuration = parseInt(document.getElementById('add-contract-duration').value) || 0;
+      const cNotice   = parseInt(document.getElementById('add-contract-notice').value)   || 0;
+      if (cStart && cDuration > 0) {
+        contractData = {
+          contractStart:    cStart,
+          contractDuration: cDuration,
+          contractNotice:   cNotice,
+          contractExpiry:   addMonths(cStart, cDuration),
+        };
+      }
+    }
     state.metadata.documents[id] = { id, category:catId, subcategory:subcat, title:title||srcName,
-      fileName:srcName, filePath:destPath, date:date||new Date().toISOString().slice(0,10), note, addedAt:new Date().toISOString() };
+      fileName:srcName, filePath:destPath, date:date||new Date().toISOString().slice(0,10), note,
+      addedAt:new Date().toISOString(), ...contractData };
     saved++;
   }
 
@@ -454,15 +490,28 @@ function openDetailModal(docId) {
   state.activeDocId = docId;
   const cat  = CATEGORIES.find(c => c.id === doc.category);
   const name = doc.title || doc.fileName || doc.filePath?.split(/[\\/]/).pop() || 'Unbenannt';
+  const contractInfoHtml = doc.contractExpiry ? `
+    <div class="detail-info-row"><span class="detail-info-label label-caps">Vertragsende</span><span class="detail-info-value">${formatDate(doc.contractExpiry)}${(() => { const days = Math.ceil((new Date(doc.contractExpiry + 'T00:00:00') - new Date()) / 86400000); return days >= 0 ? ` <span class="detail-contract-days ${days < 60 ? 'red' : 'yellow'}">(${days} Tage)</span>` : ' <span class="detail-contract-days red">(abgelaufen)</span>'; })()}</span></div>
+    ${doc.contractDuration ? `<div class="detail-info-row"><span class="detail-info-label label-caps">Laufzeit</span><span class="detail-info-value">${doc.contractDuration} Monate</span></div>` : ''}
+    ${doc.contractNotice ? `<div class="detail-info-row"><span class="detail-info-label label-caps">Kündigungsfrist</span><span class="detail-info-value">${doc.contractNotice} Wochen</span></div>` : ''}
+  ` : '';
+
   document.getElementById('modal-detail-body').innerHTML = `
     <div class="detail-icon">${fileIcon(doc.filePath || doc.title)}</div>
     <div class="detail-name">${escHtml(name)}</div>
     <div class="detail-meta">${cat ? cat.icon + ' ' + cat.label : ''}${doc.subcategory ? ' › ' + doc.subcategory : ''}</div>
-    <div class="detail-info-row"><span class="detail-info-label">Datum</span><span class="detail-info-value">${formatDate(doc.date)}</span></div>
-    <div class="detail-info-row"><span class="detail-info-label">Hinzugefügt</span><span class="detail-info-value">${formatDate(doc.addedAt)}</span></div>
-    <div class="detail-info-row"><span class="detail-info-label">Dateipfad</span><span class="detail-info-value">${escHtml(doc.filePath||'–')}</span></div>
-    ${doc.note ? `<div class="detail-info-row"><span class="detail-info-label">Notiz</span><span class="detail-info-value">${escHtml(doc.note)}</span></div>` : ''}
+    <div class="detail-info-row"><span class="detail-info-label label-caps">Datum</span><span class="detail-info-value">${formatDate(doc.date)}</span></div>
+    <div class="detail-info-row"><span class="detail-info-label label-caps">Hinzugefügt</span><span class="detail-info-value">${formatDate(doc.addedAt)}</span></div>
+    <div class="detail-info-row"><span class="detail-info-label label-caps">Dateipfad</span><span class="detail-info-value">${escHtml(doc.filePath||'–')}</span></div>
+    ${doc.note ? `<div class="detail-info-row"><span class="detail-info-label label-caps">Notiz</span><span class="detail-info-value">${escHtml(doc.note)}</span></div>` : ''}
+    ${contractInfoHtml}
   `;
+
+  // Vorschau zurücksetzen
+  document.getElementById('modal-preview-section').style.display = 'none';
+  document.getElementById('modal-preview-content').innerHTML = '';
+  document.getElementById('btn-toggle-preview').textContent = '👁 Vorschau';
+
   openModal('modal-detail');
 }
 
@@ -620,8 +669,8 @@ function buildHBCard(entry, showMonth = false) {
       </div>
       ${entry.description ? `<div class="hb-card-desc">${escHtml(entry.description)}</div>` : ''}
       <div class="hb-card-footer">
-        <span class="hb-type-badge">${typeLbl}</span>
-        ${recLabel ? `<span class="hb-rec-badge">${recLabel}</span>` : ''}
+        <span class="hb-type-badge badge">${typeLbl}</span>
+        ${recLabel ? `<span class="hb-rec-badge badge">${recLabel}</span>` : ''}
         <span class="hb-card-date">${showMonth
           ? new Date(entry.date + 'T00:00:00').toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })
           : formatDate(entry.date)}</span>
@@ -666,8 +715,8 @@ function buildHBStackCard(name, entries) {
         <span class="hb-stack-expand">${isExpanded ? '▾' : '▸'}</span>
       </div>
       <div class="hb-card-footer">
-        <span class="hb-type-badge">${typeLbl}</span>
-        ${recLabel ? `<span class="hb-rec-badge">${recLabel}</span>` : ''}
+        <span class="hb-type-badge badge">${typeLbl}</span>
+        ${recLabel ? `<span class="hb-rec-badge badge">${recLabel}</span>` : ''}
         <span class="hb-card-date">${entries.length} Einträge</span>
       </div>
     </div>
@@ -760,6 +809,7 @@ function renderHB() {
   renderHBCards();
   renderHBSummary();
   renderHBMonthLabel();
+  if (state.hb.statsVisible) drawHBStats();
 }
 
 // ── HB: Aktionen ──────────────────────────────────────────────────────────────
@@ -1056,6 +1106,22 @@ function initEvents() {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(m => closeModal(m.id));
   });
+
+  // Einstellungen
+  document.getElementById('btn-settings').addEventListener('click', openSettingsModal);
+  document.getElementById('settings-notifications').addEventListener('change', async e => {
+    state.metadata.settings.notifications = e.target.checked;
+    await saveMetadata();
+  });
+
+  // HB Export
+  document.getElementById('btn-export-hb').addEventListener('click', exportHBCSV);
+
+  // HB Statistik
+  document.getElementById('btn-toggle-hb-stats').addEventListener('click', toggleHBStats);
+
+  // Dokument-Vorschau
+  document.getElementById('btn-toggle-preview').addEventListener('click', toggleDocPreview);
 }
 
 // ── Migration: Einzel-Einträge mit Wiederholung → vollständige Serie ──────────
@@ -1091,6 +1157,352 @@ function migrateHBSeries() {
   saveMetadata();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ── VERTRAGSABLAUF ────────────────────────────────────────────────────────────
+
+function getExpiringContracts(withinDays = 90) {
+  const now = new Date();
+  return Object.values(state.metadata.documents)
+    .filter(d => d.contractExpiry)
+    .map(doc => {
+      const expiry   = new Date(doc.contractExpiry + 'T00:00:00');
+      const daysLeft = Math.ceil((expiry - now) / 86400000);
+      return { doc, daysLeft };
+    })
+    .filter(({ daysLeft }) => daysLeft >= 0 && daysLeft <= withinDays)
+    .sort((a, b) => a.daysLeft - b.daysLeft);
+}
+
+function getContractExpiryStatus(catId) {
+  if (catId !== 'vertraege') return null;
+  const expiring = getExpiringContracts(90);
+  if (expiring.some(({ daysLeft }) => daysLeft < 60)) return 'red';
+  if (expiring.length > 0) return 'yellow';
+  return null;
+}
+
+function renderContractWarnings() {
+  const el = document.getElementById('contract-warnings');
+  if (!el) return;
+  const expiring = getExpiringContracts(90);
+  if (!expiring.length) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div class="cw-header">⚠️ Ablaufende Verträge</div>
+    <div class="cw-list">
+      ${expiring.map(({ doc, daysLeft }) => `
+        <div class="cw-item ${daysLeft < 60 ? 'urgent' : ''}">
+          <span class="cw-name">${escHtml(doc.title || doc.fileName || 'Unbenannt')}</span>
+          <span class="cw-meta">Läuft ab: ${formatDate(doc.contractExpiry)}</span>
+          <span class="cw-days-badge badge ${daysLeft < 60 ? 'red' : 'yellow'}">${daysLeft}d</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── STATISTIK ─────────────────────────────────────────────────────────────────
+
+function toggleHBStats() {
+  const section = document.getElementById('hb-stats-section');
+  const btn     = document.getElementById('btn-toggle-hb-stats');
+  state.hb.statsVisible = !state.hb.statsVisible;
+  section.style.display = state.hb.statsVisible ? 'block' : 'none';
+  btn.classList.toggle('active', state.hb.statsVisible);
+  if (state.hb.statsVisible) drawHBStats();
+}
+
+function drawHBStats() {
+  const allEntries = hbEntries();
+  const cs = getComputedStyle(document.documentElement);
+  const incomeColor  = cs.getPropertyValue('--income-color').trim()  || '#40a02b';
+  const expenseColor = cs.getPropertyValue('--expense-color').trim() || '#d20f39';
+  const textColor    = cs.getPropertyValue('--text').trim()          || '#4c4f69';
+  const mutedColor   = cs.getPropertyValue('--text-muted').trim()    || '#6c6f85';
+  const borderColor  = cs.getPropertyValue('--border').trim()        || '#ccd0da';
+  const accentColor  = cs.getPropertyValue('--accent').trim()        || '#8839ef';
+
+  // ── Balkendiagramm ────────────────────────────────────────────────────────
+  const barCanvas = document.getElementById('hb-bar-chart');
+  if (barCanvas) {
+    const now = new Date();
+    const months = [];
+    for (let i = -3; i <= 2; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      months.push({
+        year:   d.getFullYear(),
+        month:  d.getMonth() + 1,
+        label:  d.toLocaleDateString('de-DE', { month: 'short' }) + ' ' + String(d.getFullYear()).slice(2),
+      });
+    }
+    const barData = months.map(m => {
+      const mes = allEntries.filter(e => {
+        const d = new Date(e.date);
+        return d.getFullYear() === m.year && d.getMonth() + 1 === m.month;
+      });
+      return {
+        label:   m.label,
+        income:  mes.filter(e => e.type === 'einnahme').reduce((s, e) => s + e.amount, 0),
+        expense: mes.filter(e => e.type === 'ausgabe').reduce((s, e) => s + e.amount, 0),
+      };
+    });
+
+    const ctx  = barCanvas.getContext('2d');
+    const W    = barCanvas.width, H = barCanvas.height;
+    const pt   = 20, pb = 48, pl = 58, pr = 10;
+    const cW   = W - pl - pr, cH = H - pt - pb;
+    const maxVal = Math.max(...barData.map(d => Math.max(d.income, d.expense)), 1);
+
+    ctx.clearRect(0, 0, W, H);
+
+    // Gitterlinien + Y-Achsenbeschriftung
+    for (let i = 0; i <= 4; i++) {
+      const y = pt + cH - (cH * i / 4);
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth   = 0.5;
+      ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(W - pr, y); ctx.stroke();
+      const val = maxVal * i / 4;
+      ctx.fillStyle  = mutedColor;
+      ctx.font       = '10px system-ui';
+      ctx.textAlign  = 'right';
+      ctx.fillText(val >= 1000 ? (val / 1000).toFixed(1) + 'k' : val.toFixed(0), pl - 5, y + 3);
+    }
+
+    // Balken
+    const groupW = cW / barData.length;
+    const barW   = Math.max(Math.min(groupW * 0.32, 22), 8);
+    barData.forEach((d, i) => {
+      const gx = pl + i * groupW + groupW / 2;
+      const iH = Math.max((d.income  / maxVal) * cH, d.income  > 0 ? 2 : 0);
+      const eH = Math.max((d.expense / maxVal) * cH, d.expense > 0 ? 2 : 0);
+      ctx.fillStyle = incomeColor;
+      ctx.fillRect(gx - barW - 2, pt + cH - iH, barW, iH);
+      ctx.fillStyle = expenseColor;
+      ctx.fillRect(gx + 2, pt + cH - eH, barW, eH);
+      ctx.fillStyle = mutedColor;
+      ctx.font      = '9px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(d.label, gx, H - pb + 14);
+    });
+
+    // Legende
+    ctx.fillStyle = incomeColor;  ctx.fillRect(pl, H - 16, 10, 10);
+    ctx.fillStyle = textColor;    ctx.font = '10px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('Einnahmen', pl + 14, H - 7);
+    ctx.fillStyle = expenseColor; ctx.fillRect(pl + 90, H - 16, 10, 10);
+    ctx.fillStyle = textColor;    ctx.fillText('Ausgaben', pl + 104, H - 7);
+  }
+
+  // ── Kreisdiagramm ─────────────────────────────────────────────────────────
+  const pieCanvas = document.getElementById('hb-pie-chart');
+  if (pieCanvas) {
+    const ctx = pieCanvas.getContext('2d');
+    const W   = pieCanvas.width, H = pieCanvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    const totalIncome  = allEntries.filter(e => e.type === 'einnahme').reduce((s, e) => s + e.amount, 0);
+    const totalExpense = allEntries.filter(e => e.type === 'ausgabe').reduce((s, e) => s + e.amount, 0);
+    const totalPaid    = allEntries.filter(e => e.paid).reduce((s, e) => s + e.amount, 0);
+    const totalPending = allEntries.filter(e => !e.paid).reduce((s, e) => s + e.amount, 0);
+
+    const pendingColor = cs.getPropertyValue('--sum-pending-color').trim() || '#df8e1d';
+    const slices = [
+      { label: 'Einnahmen',  value: totalIncome,  color: incomeColor },
+      { label: 'Ausgaben',   value: totalExpense, color: expenseColor },
+    ].filter(s => s.value > 0);
+
+    const total = slices.reduce((s, d) => s + d.value, 0);
+    const cx = W / 2, cy = (H - 90) / 2 + 8, r = Math.min(cx, cy) - 8;
+
+    if (total === 0) {
+      ctx.fillStyle = mutedColor;
+      ctx.font = '12px system-ui'; ctx.textAlign = 'center';
+      ctx.fillText('Keine Daten', cx, cy);
+    } else {
+      let angle = -Math.PI / 2;
+      slices.forEach(s => {
+        const slice = (s.value / total) * 2 * Math.PI;
+        ctx.beginPath(); ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r, angle, angle + slice);
+        ctx.closePath(); ctx.fillStyle = s.color; ctx.fill();
+        angle += slice;
+      });
+      // Donut-Loch
+      ctx.beginPath(); ctx.arc(cx, cy, r * 0.55, 0, 2 * Math.PI);
+      ctx.fillStyle = cs.getPropertyValue('--surface').trim() || '#ffffff'; ctx.fill();
+    }
+
+    // Legende unten
+    const legY = cy + r + 16;
+    [
+      { label: 'Einnahmen',  value: totalIncome,  color: incomeColor },
+      { label: 'Ausgaben',   value: totalExpense, color: expenseColor },
+      { label: 'Bezahlt',    value: totalPaid,    color: accentColor },
+      { label: 'Ausstehend', value: totalPending, color: pendingColor },
+    ].forEach((item, i) => {
+      const lx = 8, ly = legY + i * 18;
+      ctx.fillStyle = item.color;
+      ctx.fillRect(lx, ly - 9, 10, 10);
+      ctx.fillStyle = textColor;
+      ctx.font = '11px system-ui'; ctx.textAlign = 'left';
+      ctx.fillText(`${item.label}: ${formatCurrency(item.value)}`, lx + 15, ly);
+    });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── CSV-EXPORT ────────────────────────────────────────────────────────────────
+
+async function exportHBCSV() {
+  const entries = filteredHBEntries().sort((a, b) => new Date(a.date) - new Date(b.date));
+  if (!entries.length) return showToast('Keine Einträge zum Exportieren.', 'info');
+
+  const recLabels = { monatlich: 'Monatlich', quartal: 'Quartal', jaehrlich: 'Jährlich', einmalig: 'Einmalig' };
+  const rows = [
+    ['Datum', 'Bezeichnung', 'Beschreibung', 'Typ', 'Betrag (EUR)', 'Bezahlt', 'Wiederholung'],
+    ...entries.map(e => [
+      e.date,
+      e.name,
+      e.description || '',
+      e.type === 'einnahme' ? 'Einnahme' : 'Ausgabe',
+      e.amount.toFixed(2).replace('.', ','),
+      e.paid ? 'Ja' : 'Nein',
+      recLabels[e.recurrence] || 'Einmalig',
+    ]),
+  ];
+  // UTF-8 BOM + semikolon-getrennt für Excel (DE)
+  const csv = '\ufeff' + rows.map(r =>
+    r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')
+  ).join('\r\n');
+
+  const monthStr = state.hb.month
+    ? `${state.hb.month.year}-${String(state.hb.month.month).padStart(2, '0')}`
+    : new Date().toISOString().slice(0, 7);
+  const defaultName = `Haushaltsbuch_${monthStr}.csv`;
+
+  const result = await window.electronAPI.saveFile(defaultName, csv);
+  if (result === true)  showToast('CSV exportiert.', 'success');
+  else if (result === false) showToast('Export fehlgeschlagen.', 'error');
+  // null = abgebrochen, kein Toast
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── FÄLLIGKEITS-ERINNERUNGEN ──────────────────────────────────────────────────
+
+function checkDueEntries() {
+  if (!state.metadata.settings?.notifications) return;
+  const cutoff = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+  const due = hbEntries().filter(e => {
+    if (e.paid) return false;
+    const d = new Date(e.date + 'T00:00:00');
+    return d <= cutoff;
+  });
+  if (!due.length) return;
+  const names = due.slice(0, 3).map(e => e.name).join(', ');
+  const extra = due.length > 3 ? ` + ${due.length - 3} weitere` : '';
+  try {
+    new Notification('Virtueller Schreibtisch – Fällige Einträge', {
+      body: `${due.length} ausstehend: ${names}${extra}`,
+    });
+  } catch (_) {}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── EINSTELLUNGEN-MODAL ───────────────────────────────────────────────────────
+
+function openSettingsModal() {
+  document.getElementById('settings-notifications').checked = !!state.metadata.settings?.notifications;
+  renderBackupList();
+  openModal('modal-settings');
+}
+
+async function renderBackupList() {
+  const list    = document.getElementById('backup-list');
+  list.innerHTML = '<div class="backup-loading">Lade…</div>';
+  const backups = await window.electronAPI.listBackups();
+  if (!backups.length) {
+    list.innerHTML = '<div class="backup-empty">Keine Backups vorhanden.</div>';
+    return;
+  }
+  list.innerHTML = backups.map(f => {
+    const dateStr = f.replace('metadata_', '').replace('.json', '');
+    return `<div class="backup-item">
+      <span class="backup-date">📁 ${dateStr}</span>
+      <button class="btn btn-secondary btn-sm backup-restore-btn" data-file="${escHtml(f)}">↩ Wiederherstellen</button>
+    </div>`;
+  }).join('');
+  list.querySelectorAll('.backup-restore-btn').forEach(btn => {
+    btn.addEventListener('click', () => restoreBackup(btn.dataset.file));
+  });
+}
+
+async function restoreBackup(fileName) {
+  const dateStr = fileName.replace('metadata_', '').replace('.json', '');
+  if (!confirm(`Backup vom ${dateStr} wiederherstellen?\nAlle aktuellen Daten werden überschrieben!`)) return;
+  const ok = await window.electronAPI.restoreBackup(fileName);
+  if (ok) {
+    showToast('Backup wiederhergestellt – App wird neu geladen…', 'success');
+    setTimeout(() => location.reload(), 1800);
+  } else {
+    showToast('Backup konnte nicht wiederhergestellt werden.', 'error');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── DOKUMENT-VORSCHAU ─────────────────────────────────────────────────────────
+
+async function toggleDocPreview() {
+  const section = document.getElementById('modal-preview-section');
+  const content = document.getElementById('modal-preview-content');
+  const btn     = document.getElementById('btn-toggle-preview');
+
+  if (section.style.display !== 'none') {
+    section.style.display = 'none';
+    content.innerHTML     = '';
+    btn.textContent       = '👁 Vorschau';
+    return;
+  }
+
+  const doc = state.metadata.documents[state.activeDocId];
+  if (!doc?.filePath) {
+    showToast('Kein Dateipfad bekannt.', 'info');
+    return;
+  }
+
+  const ext     = (doc.filePath.split('.').pop() || '').toLowerCase();
+  const imgExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff'];
+
+  section.style.display = 'block';
+  btn.textContent       = '👁 Vorschau ausblenden';
+  content.innerHTML     = '<div class="preview-loading">Lade Vorschau…</div>';
+
+  if (imgExts.includes(ext)) {
+    const result = await window.electronAPI.readFileAsBase64(doc.filePath);
+    if (result?.base64) {
+      content.innerHTML = `<img class="preview-image" src="data:${result.mime};base64,${result.base64}" alt="Vorschau" />`;
+    } else {
+      content.innerHTML = '<div class="preview-unavailable">Datei konnte nicht geladen werden.</div>';
+    }
+  } else if (ext === 'pdf') {
+    const result = await window.electronAPI.readFileAsBase64(doc.filePath);
+    if (result?.base64) {
+      try {
+        const bytes = Uint8Array.from(atob(result.base64), c => c.charCodeAt(0));
+        const blob  = new Blob([bytes], { type: 'application/pdf' });
+        const url   = URL.createObjectURL(blob);
+        content.innerHTML = `<iframe class="preview-pdf" src="${url}"></iframe>`;
+      } catch (_) {
+        content.innerHTML = '<div class="preview-unavailable">PDF konnte nicht gerendert werden.</div>';
+      }
+    } else {
+      content.innerHTML = '<div class="preview-unavailable">Datei konnte nicht geladen werden.</div>';
+    }
+  } else {
+    content.innerHTML = '<div class="preview-unavailable">Keine Vorschau verfügbar für diesen Dateityp.</div>';
+  }
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 async function init() {
@@ -1106,6 +1518,9 @@ async function init() {
     };
   }
 
+  // Settings-Defaults sicherstellen
+  state.metadata.settings = { notifications: true, ...state.metadata.settings };
+
   migrateHBSeries();
 
   applyTheme(state.metadata.theme || 'lollypop');
@@ -1118,6 +1533,10 @@ async function init() {
 
   const dataPath = await window.electronAPI.getDataPath();
   document.getElementById('sidebar-footer').textContent = dataPath;
+
+  // Fälligkeits-Erinnerungen
+  checkDueEntries();
+  setInterval(checkDueEntries, 24 * 60 * 60 * 1000);
 }
 
 init().catch(err => console.error('Startfehler:', err));

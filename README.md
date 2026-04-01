@@ -5,6 +5,7 @@ Eine lokale Desktop-App zur Dokumentenverwaltung und Haushaltsbuchführung – g
 ## Features
 
 ### Schreibtisch
+
 - Dokumente in 4 Kategorien organisieren: Rechnungen & Finanzen, Verträge & Versicherungen, Behörden & Behördenpost, Persönliches & Sonstiges
 - Ordner verknüpfen und automatisch scannen
 - Dokumente per Drag & Drop oder Dateiauswahl hinzufügen
@@ -12,6 +13,7 @@ Eine lokale Desktop-App zur Dokumentenverwaltung und Haushaltsbuchführung – g
 - Dokumente direkt öffnen oder im Explorer anzeigen
 
 ### Haushaltsbuch
+
 - Einnahmen und Ausgaben als Karten erfassen
 - Wiederkehrende Einträge (monatlich, quartalsweise, jährlich) mit automatischer Seriengenerierung
 - Einzeleintrag nachträglich in eine Serie umwandeln
@@ -21,6 +23,7 @@ Eine lokale Desktop-App zur Dokumentenverwaltung und Haushaltsbuchführung – g
 - Filter nach Einnahmen, Ausgaben, Bezahlt, Ausstehend
 
 ### Allgemein
+
 - Zwei Themes: Latte (hell, Catppuccin) und Dark (dunkel, Catppuccin Mocha)
 - Alle Daten werden lokal gespeichert – keine Cloud, keine Abhängigkeiten
 

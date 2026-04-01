@@ -166,6 +166,22 @@ ipcMain.handle('fs:rename', async (_event, oldPath, newPath) => {
   }
 });
 
+// ── Backup-Hilfsfunktion ──────────────────────────────────────────────────────
+function createBackup(data) {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const backupFile = path.join(dataDir, `metadata_${today}.json`);
+    fs.writeFileSync(backupFile, JSON.stringify(data, null, 2), 'utf-8');
+    // Max. 7 Backups behalten
+    const backups = fs.readdirSync(dataDir)
+      .filter(f => /^metadata_\d{4}-\d{2}-\d{2}\.json$/.test(f))
+      .sort();
+    while (backups.length > 7) {
+      fs.unlinkSync(path.join(dataDir, backups.shift()));
+    }
+  } catch (_) {}
+}
+
 // ── IPC: Metadaten ────────────────────────────────────────────────────────────
 
 ipcMain.handle('data:load', async () => {
@@ -181,6 +197,7 @@ ipcMain.handle('data:save', async (_event, data) => {
   try {
     ensureDataDir();
     fs.writeFileSync(metaFile, JSON.stringify(data, null, 2), 'utf-8');
+    createBackup(data);
     return true;
   } catch (_) {
     return false;
@@ -188,3 +205,54 @@ ipcMain.handle('data:save', async (_event, data) => {
 });
 
 ipcMain.handle('app:getDataPath', async () => dataDir);
+
+// ── IPC: Datei-Vorschau ───────────────────────────────────────────────────────
+ipcMain.handle('fs:readFileAsBase64', async (_event, filePath) => {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const data = fs.readFileSync(filePath);
+    const ext = path.extname(filePath).toLowerCase().slice(1);
+    const mimeMap = {
+      pdf: 'application/pdf',
+      png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+      gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', tiff: 'image/tiff',
+    };
+    return { base64: data.toString('base64'), mime: mimeMap[ext] || null };
+  } catch (_) { return null; }
+});
+
+// ── IPC: CSV-Export ───────────────────────────────────────────────────────────
+ipcMain.handle('dialog:saveFile', async (_event, defaultName, content) => {
+  const result = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: defaultName,
+    filters: [
+      { name: 'CSV-Dateien', extensions: ['csv'] },
+      { name: 'Alle Dateien', extensions: ['*'] },
+    ],
+  });
+  if (result.canceled) return null;
+  try {
+    fs.writeFileSync(result.filePath, content, 'utf-8');
+    return true;
+  } catch (_) { return false; }
+});
+
+// ── IPC: Backups ──────────────────────────────────────────────────────────────
+ipcMain.handle('data:listBackups', async () => {
+  try {
+    ensureDataDir();
+    return fs.readdirSync(dataDir)
+      .filter(f => /^metadata_\d{4}-\d{2}-\d{2}\.json$/.test(f))
+      .sort()
+      .reverse();
+  } catch (_) { return []; }
+});
+
+ipcMain.handle('data:restoreBackup', async (_event, fileName) => {
+  try {
+    const backupPath = path.join(dataDir, fileName);
+    if (!fs.existsSync(backupPath)) return false;
+    fs.copyFileSync(backupPath, metaFile);
+    return true;
+  } catch (_) { return false; }
+});
